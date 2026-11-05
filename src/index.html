@@ -11,5 +11,15 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
 </head>
-<body><app-root></app-root></body>
+<body>
+  <app-root><p style="font-family:system-ui;padding:1rem;color:#6b7280">Loading...</p></app-root>
+  <pre id="boot-error" style="display:none;margin:1rem;padding:1rem;background:#fff1f0;color:#b91c1c;white-space:pre-wrap;font-size:.85rem"></pre>
+  <noscript>This app needs JavaScript.</noscript>
+  <script>
+    window.addEventListener('error', function (e) {
+      var b = document.getElementById('boot-error');
+      if (b) { b.style.display = 'block'; b.textContent += (e.message || 'Script error') + (e.filename ? ' (' + e.filename + ')' : '') + '\n'; }
+    }, true);
+  </script>
+</body>
 </html>
