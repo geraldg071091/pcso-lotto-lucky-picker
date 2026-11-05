@@ -162,7 +162,7 @@ function parseRows(html) {
   return draws;
 }
 
-async function eightYears(label) {
+async function nineYears(label) {
   const file = path.join(CACHE, "v5-" + label.replace("/", "-") + ".json");
   try { const c = JSON.parse(fs.readFileSync(file)); if (Date.now() - c.at < 6 * 3600e3) return c.draws; } catch {}
   const end = new Date(), all = new Map();
@@ -180,19 +180,59 @@ async function eightYears(label) {
   return draws;
 }
 
-const STATIC = { "/manifest.json": ["application/manifest+json", "manifest.json"], "/sw.js": ["text/javascript", "sw.js"],
-  "/icon-192.png": ["image/png", "icon-192.png"], "/icon-512.png": ["image/png", "icon-512.png"] };
+// ---- static hosting for the built Angular app (dist/pcso-lotto/browser) ----
+const WEB_ROOT = path.join(__dirname, "dist", "pcso-lotto", "browser");
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
+  ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+  ".txt": "text/plain", ".woff2": "font/woff2" };
 const PORT = process.env.PORT || 3000;
+
+function sendFile(res, file) {
+  const type = TYPES[path.extname(file).toLowerCase()] || "application/octet-stream";
+  const hashed = /-[A-Z0-9]{8}\.(js|css)$/i.test(file); // Angular hashed bundles never change
+  res.writeHead(200, { "Content-Type": type, "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache" });
+  fs.createReadStream(file).pipe(res);
+}
+
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
+
+  if (u.pathname === "/healthz") { res.writeHead(200); return res.end("ok"); }
+
   if (u.pathname === "/api/pcso") {
-    try { const draws = await eightYears(u.searchParams.get("label")); res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({ draws })); }
-    catch (e) { console.error("PCSO failed:", e.message); res.writeHead(502, {"Content-Type":"application/json"}); res.end(JSON.stringify({ error: e.message })); }
-  } else if (STATIC[u.pathname]) {
-    res.writeHead(200, {"Content-Type": STATIC[u.pathname][0]}); res.end(fs.readFileSync(path.join(__dirname, STATIC[u.pathname][1])));
-  } else { res.writeHead(200, {"Content-Type":"text/html; charset=utf-8"}); res.end(fs.readFileSync(path.join(__dirname, "index.html"))); }
+    try {
+      const draws = await nineYears(u.searchParams.get("label"));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ draws }));
+    } catch (e) {
+      console.error("PCSO failed:", e.message);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (!fs.existsSync(WEB_ROOT)) {
+    res.writeHead(503, { "Content-Type": "text/plain" });
+    return res.end("Angular build not found. Run: npm run build");
+  }
+
+  // resolve inside WEB_ROOT only, so ../ cannot escape it
+  const wanted = path.normalize(path.join(WEB_ROOT, decodeURIComponent(u.pathname)));
+  if (wanted.startsWith(WEB_ROOT) && fs.existsSync(wanted) && fs.statSync(wanted).isFile()) return sendFile(res, wanted);
+
+  // A path with a file extension is an asset request. Answering it with index.html
+  // (status 200) makes a missing script look like a blank page, so say 404 and log it.
+  if (path.extname(u.pathname)) {
+    console.warn("404 asset not found: " + u.pathname + " (looked in " + WEB_ROOT + ")");
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    return res.end("Not found: " + u.pathname);
+  }
+  sendFile(res, path.join(WEB_ROOT, "index.html")); // SPA fallback for app routes only
 }).listen(PORT, "0.0.0.0", () => {
+  console.log("Listening on port " + PORT);
+  try { console.log("Serving " + WEB_ROOT + ": " + fs.readdirSync(WEB_ROOT).join(", ")); }
+  catch (e) { console.error("WEB_ROOT missing: " + WEB_ROOT + " (did the build run?)"); }
   console.log("On this computer: http://localhost:" + PORT);
-  for (const list of Object.values(require("os").networkInterfaces()))
-    for (const i of list) if (i.family === "IPv4" && !i.internal) console.log("On your phone (same Wi-Fi): http://" + i.address + ":" + PORT);
 });
