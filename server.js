@@ -66,54 +66,26 @@ async function search(label, from, to) {
   for (const [n, f] of Object.entries(form.fields)) if (!f.submit) body.set(n, f.value);
   for (const [n, opts] of Object.entries(form.selects)) { const s = opts.find(o => o.selected) || opts[0]; if (s) body.set(n, s.value); }
 
-  /* Every field must resolve. A silent miss posts a stale default, which is how
-     this fetch spent several rounds asking PCSO for "day 1 to day 5". */
-  const setValue = (name, value) => body.set(name, String(value));
-
-  const setSelect = (suffix, wanted, custom) => {
-    const n = findName(form, suffix);
-    if (!n) throw new Error("field not found: " + suffix + " | selects: " + Object.keys(form.selects).join(", "));
+  const set = (suffix, wanted, custom) => {
+    const n = findName(form, suffix); if (!n) throw new Error("field not found: " + suffix + ". Dropdowns on page: " + Object.keys(form.selects).join(", "));
     const o = custom ? custom(form.selects[n]) : pickOpt(form.selects[n], wanted);
-    if (!o) {
-      const seen = form.selects[n].map(x => x.value + "=" + x.text).join(" | ");
-      throw new Error("no option for " + suffix + " wanted " + JSON.stringify(wanted) + " | options: " + seen);
-    }
-    setValue(n, o.value);
-    return n;
+    if (!o) throw new Error("option not found for " + suffix + " = " + wanted);
+    body.set(n, o.value);
   };
-
-  /* Years are often absent from the dropdown. If the year we need is not offered,
-     add the field ourselves rather than posting a wrong year. */
-  const setYear = (suffix, year) => {
-    const n = findName(form, suffix);
-    if (!n) throw new Error("field not found: " + suffix);
-    const o = pickOpt(form.selects[n], [year]);
-    setValue(n, o ? o.value : year);
-    if (!o) console.warn("year " + year + " not in " + suffix + " options; posting it directly");
-  };
-
-  setSelect("ddlStartMonth", [MONTHS[from.getMonth()], from.getMonth() + 1]);
-  setSelect(["ddlStartDate", "ddlStartDay"], [from.getDate(), String(from.getDate()).padStart(2, "0")]);
-  setYear("ddlStartYear", from.getFullYear());
-  setSelect("ddlEndMonth", [MONTHS[to.getMonth()], to.getMonth() + 1]);
-  setSelect(["ddlEndDay", "ddlEndDate"], [to.getDate(), String(to.getDate()).padStart(2, "0")]);
-  setYear("ddlEndYear", to.getFullYear());
-  setSelect("ddlSelectGame", [], o => gameOpt(o, label));
-
+  set("ddlStartMonth", [MONTHS[from.getMonth()], from.getMonth() + 1]);
+  set(["ddlStartDate", "ddlStartDay"], [from.getDate(), String(from.getDate()).padStart(2,"0")]);
+  set("ddlStartYear", [from.getFullYear()]);
+  set("ddlEndMonth", [MONTHS[to.getMonth()], to.getMonth() + 1]);
+  set(["ddlEndDay", "ddlEndDate"], [to.getDate(), String(to.getDate()).padStart(2,"0")]);
+  set("ddlEndYear", [to.getFullYear()]);
+  set("ddlSelectGame", [], o => gameOpt(o, label));
   const btn = Object.entries(form.fields).find(([n, f]) => f.submit && /search/i.test(n + f.value));
   if (btn) body.set(btn[0], btn[1].value);
 
   const r = await fetch(PCSO, { method: "POST", redirect: "follow",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA, Referer: PCSO, cookie }, body });
   if (!r.ok) throw new Error("PCSO POST " + r.status);
-  const sent = body.get(findName(form, "ddlStartYear")) + "-" + body.get(findName(form, "ddlStartMonth"))
-             + "-" + body.get(findName(form, ["ddlStartDate", "ddlStartDay"])) + " to "
-             + body.get(findName(form, "ddlEndYear")) + "-" + body.get(findName(form, "ddlEndMonth"))
-             + "-" + body.get(findName(form, ["ddlEndDay", "ddlEndDate"]))
-             + " | game=" + body.get(findName(form, "ddlSelectGame"));
-  const rows = parseRows(await r.text());
-  console.log("PCSO " + label + " asked " + sent + " -> " + rows.length + " rows");
-  return rows;
+  return parseRows(await r.text());
 }
 
 function parseRows(html) {
