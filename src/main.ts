@@ -15,4 +15,8 @@ bootstrapApplication(AppComponent, {
     provideEffects([LotteryEffects]),
     provideStoreDevtools({ maxAge: 25, logOnly: !isDevMode() }),
   ],
-}).catch(err => console.error(err));
+}).catch(err => {
+  console.error(err);
+  const box = document.getElementById('boot-error');
+  if (box) { box.style.display = 'block'; box.textContent = 'App failed to start: ' + (err && err.message ? err.message : err); }
+});
