@@ -20,7 +20,7 @@ const phNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asi
         <h2>{{ (meta$ | async)?.name }}</h2>
         <div class="meta">
           @if (next$ | async; as nd) {
-            Next draw {{ nd.at | date:'EEE, MMM d, h:mm a' }} PHT
+            Next draw {{ nd.drawAt | date:'EEE, MMM d, h:mm a' }} PHT
           } @else { Schedule unavailable }
         </div>
       </div>
@@ -57,8 +57,12 @@ export class NextDrawComponent {
       const m = tm ? +tm[2] : 0;
       const now = phNow();
       for (let i = 0; i < 8; i++) {
-        const d = new Date(now); d.setDate(d.getDate() + i); d.setHours(h, m, 0, 0);
-        if (d > now && (days.includes('daily') || days.includes(DAYS[d.getDay()]))) return d;
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        d.setHours(h, m, 0, 0);
+        if (d > now && (days.includes('daily') || days.includes(DAYS[d.getDay()]))) {
+          return { drawAt: d };
+        }
       }
       return null;
     }))),
@@ -69,7 +73,7 @@ export class NextDrawComponent {
     switchMap(() => this.next$),
     map(nd => {
       if (!nd) return [];
-      const s = Math.max(0, Math.floor((nd.getTime() - phNow().getTime()) / 1000));
+      const s = Math.max(0, Math.floor((nd.drawAt.getTime() - phNow().getTime()) / 1000));
       return [
         { value: String(Math.floor(s / 86400)).padStart(2, '0'), label: 'days' },
         { value: String(Math.floor((s % 86400) / 3600)).padStart(2, '0'), label: 'hrs' },
